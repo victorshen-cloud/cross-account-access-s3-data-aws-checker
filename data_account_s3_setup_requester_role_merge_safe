@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BUCKET="REPLACE_BUCKET"
+ROLE_ARN="REPLACE_ROLE_ARN"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+echo "Bucket: $BUCKET"
+echo "Granting access to: $ROLE_ARN"
+
+############################################
+# GET EXISTING POLICY OR INIT
+############################################
+
+if aws s3api get-bucket-policy --bucket "$BUCKET" >/tmp/policy.json 2>/dev/null; then
+  echo "Existing policy found. Merging..."
+  CURRENT_POLICY=$(cat /tmp/policy.json | jq -r '.Policy' | jq .)
+else
+  echo "No existing policy. Creating new..."
+  CURRENT_POLICY='{"Version":"2012-10-17","Statement":[]}'
+fi
+
+############################################
+# MERGE STATEMENTS (NO DUPLICATES)
+############################################
+
+NEW_POLICY=$(echo "$CURRENT_POLICY" | jq --arg role "$ROLE_ARN" --arg bucket "$BUCKET" '
+
+def has_statement(action; resource):
+  any(.Statement[]?;
+    (.Principal.AWS == $role) and
+    (.Action == action) and
+    (.Resource == resource)
+  );
+
+if has_statement("s3:ListBucket"; "arn:aws:s3:::\($bucket)") then
+  .
+else
+  .Statement += [
+    {
+      "Sid": "AllowList-\($role | gsub("[:/]"; "-"))",
+      "Effect": "Allow",
+      "Principal": { "AWS": $role },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::\($bucket)"
+    }
+  ]
+end
+| 
+if has_statement("s3:GetObject"; "arn:aws:s3:::\($bucket)/*") then
+  .
+else
+  .Statement += [
+    {
+      "Sid": "AllowRead-\($role | gsub("[:/]"; "-"))",
+      "Effect": "Allow",
+      "Principal": { "AWS": $role },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::\($bucket)/*"
+    }
+  ]
+end
+')
+
+############################################
+# APPLY POLICY
+############################################
+
+aws s3api put-bucket-policy \
+  --bucket "$BUCKET" \
+  --policy "$NEW_POLICY"
+
+echo "Bucket policy updated safely."
