@@ -1,7 +1,8 @@
 # cross-account-access-s3-data-aws-checker
+Built a cross-account S3 exploration and validation tool with IAM automation and interactive CLI
 
 
-A CLI tool for validating and interactively exploring cross-account Amazon S3 access using IAM role assumption.
+Description: A CLI tool for validating and interactively exploring cross-account Amazon S3 access using IAM role assumption.
 
 This tool provides a **Linux-like shell experience on top of S3**, enabling engineers to navigate, inspect, and analyze datasets across AWS accounts without copying data.
 
